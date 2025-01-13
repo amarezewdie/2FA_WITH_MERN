@@ -5,11 +5,20 @@ import jwt from "jsonwebtoken";
 import userModel from "../models/userModel.js";
 
 const register = async (req, res) => {
-  console.log(req);
+  console.log(req.body);
   const { username, password } = req.body;
+
   try {
     if (!username || !password) {
       return res.json({ success: false, message: "all filed are required" });
+    }
+    const trimmedUsername = username.trim();
+    // Ensure username is not an empty string after trimming
+    if (!trimmedUsername) {
+      return res.json({
+        success: false,
+        message: "Username cannot be empty",
+      });
     }
 
     const userExist = await userModel.findOne({ username });
@@ -20,7 +29,7 @@ const register = async (req, res) => {
     const hashPassword = await bcrypt.hash(password, 10);
 
     const newUser = new userModel({
-      username,
+      username: trimmedUsername,
       password: hashPassword,
       isTwoFaActive: false,
     });
@@ -54,16 +63,24 @@ const authStatus = async (req, res) => {
   }
 };
 
-const logOut = async (req, res) => {
+const logOut = async (req, res, next) => {
   if (!req.user) {
     return res.json({ success: false, message: "un auth user" });
   }
   req.logOut((err) => {
-    if (err) return res.json({ success: false, message: "user not login" });
-    return res.json({ success: true, message: "logout successfully" });
+    if (err) {
+      return next(err);
+    }
+    req.session.destroy((err) => {
+      if (err) {
+        return next(err);
+      }
+      res.clearCookie("connect.sid");
+      res.status(200).json({ success: true, message: "logout successfully" });
+    });
   });
 };
-
+//setup
 const twoFaSetup = async (req, res) => {
   try {
     console.log("the req.user", req.user);
@@ -89,6 +106,7 @@ const twoFaSetup = async (req, res) => {
     return res.json({ success: false, message: error.message });
   }
 };
+//verify
 const twoFaVerify = (req, res) => {
   try {
     const { token } = req.body;
@@ -144,7 +162,7 @@ const twoFaVerify = (req, res) => {
     });
   }
 };
-
+//reset
 const twoFaReset = (req, res) => {
   try {
     const user = req.user;
